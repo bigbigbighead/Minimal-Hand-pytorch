@@ -14,7 +14,7 @@ _mano_root = 'mano/models'
 
 module = detnet().to(device)
 print('load model start')
-check_point = torch.load('new_check_point/ckp_detnet_83.pth', map_location=device)
+check_point = torch.load('bmc_ckp.pth', map_location=device)
 model_state = module.state_dict()
 state = {}
 for k, v in check_point.items():
@@ -29,12 +29,17 @@ pose, shape = func.initiate("zero")
 pre_useful_bone_len = np.zeros((1, 15))
 pose0 = torch.eye(3).repeat(1, 16, 1, 1)
 
+shape = shape.to(device)
+pose = pose.to(device)
+pose0 = pose0.to(device)
+
 mano = manolayer.ManoLayer(flat_hand_mean=True,
                            side="right",
                            mano_root=_mano_root,
                            use_pca=False,
                            root_rot_mode='rotmat',
                            joint_rot_mode='rotmat')
+mano = mano.to(device)
 print('start opencv')
 point_fliter = smoother.OneEuroFilter(4.0, 0.0)
 mesh_fliter = smoother.OneEuroFilter(4.0, 0.0)
@@ -52,7 +57,7 @@ view_mat = np.array([[1.0, 0.0, 0.0],
                      [0.0, 0, -1.0]])
 mesh = open3d.geometry.TriangleMesh()
 hand_verts, j3d_recon = mano(pose0, shape.float())
-mesh.triangles = open3d.utility.Vector3iVector(mano.th_faces)
+mesh.triangles = open3d.utility.Vector3iVector(mano.th_faces.cpu())
 hand_verts = hand_verts.clone().detach().cpu().numpy()[0]
 mesh.vertices = open3d.utility.Vector3dVector(hand_verts)
 viewer = open3d.visualization.Visualizer()
@@ -111,6 +116,9 @@ while (cap.isOpened()):
     opt_shape = shape_fliter.process(opt_shape)
 
     opt_tensor_shape = torch.tensor(opt_shape, dtype=torch.float)
+
+    opt_tensor_shape = opt_tensor_shape.to(device)
+
     _, j3d_p0_ops = mano(pose0, opt_tensor_shape)
     template = j3d_p0_ops.cpu().numpy().squeeze(0) / 1000.0  # template, m 21*3
     ratio = np.linalg.norm(template[9] - template[0]) / np.linalg.norm(pre_joints[9] - pre_joints[0])
@@ -120,7 +128,7 @@ while (cap.isOpened()):
     pose_R = torch.from_numpy(pose_R).float()
     #  reconstruction
     hand_verts, j3d_recon = mano(pose_R, opt_tensor_shape.float())
-    mesh.triangles = open3d.utility.Vector3iVector(mano.th_faces)
+    mesh.triangles = open3d.utility.Vector3iVector(mano.th_faces.cpu())
     hand_verts = hand_verts.clone().detach().cpu().numpy()[0]
     hand_verts = mesh_fliter.process(hand_verts)
     hand_verts = np.matmul(view_mat, hand_verts.T).T
