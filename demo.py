@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from utils import vis
 from op_pso import PSO
 import open3d
+import test_opencv as showhand
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 _mano_root = 'mano/models'
@@ -34,6 +35,7 @@ pose = pose.to(device)
 pose0 = pose0.to(device)
 
 mano = manolayer.ManoLayer(flat_hand_mean=True,
+
                            side="right",
                            mano_root=_mano_root,
                            use_pca=False,
@@ -83,7 +85,8 @@ while (cap.isOpened()):
         input = input[:, margin:-margin]
     img = input.copy()
     img = np.flip(img, -1)
-    cv2.imshow("Capture_Test", img)
+    # cv2.imshow("Capture_Test", img)
+
     input = cv2.resize(input, (128, 128))
     input = torch.tensor(input.transpose([2, 0, 1]), dtype=torch.float, device=device)  # hwc -> chw
     input = func.normalize(input, [0.5, 0.5, 0.5], [1, 1, 1])
@@ -92,6 +95,15 @@ while (cap.isOpened()):
     pre_joints = result['xyz'].squeeze(0)
     now_uv = result['uv'].clone().detach().cpu().numpy()[0, 0]
     now_uv = now_uv.astype(np.float)
+    all_uv = result['uv'].clone()
+
+    # 在原图中标注21关键点
+    original_uv = all_uv * 15
+    img_copy = img.copy()
+    img_copy = showhand.paint_hand(original_uv, img_copy)
+    cv2.imshow("Capture_Test", img_copy)
+
+
     trans = np.zeros((1, 3))
     trans[0, 0:2] = now_uv - 16.0
     trans = trans / 16.0
@@ -110,7 +122,7 @@ while (cap.isOpened()):
     low = np.zeros((1, 10)) - 3.0
     up = np.zeros((1, 10)) + 3.0
     parameters = [NGEN, popsize, low, up]
-    pso = PSO(parameters, pre_useful_bone_len.reshape((1, 15)),_mano_root)
+    pso = PSO(parameters, pre_useful_bone_len.reshape((1, 15)), _mano_root)
     pso.main()
     opt_shape = pso.ng_best
     opt_shape = shape_fliter.process(opt_shape)
@@ -144,6 +156,5 @@ while (cap.isOpened()):
     viewer.update_geometry(mesh)
     viewer.poll_events()
     if k == ord('q'):
-        break
-cap.release()
-cv2.destroyAllWindows()
+        cap.release()
+        cv2.destroyAllWindows()
