@@ -1,5 +1,6 @@
 import cv2
 import torch
+
 from manopth import manolayer
 from model.detnet import detnet
 from utils import func, bone, AIK, smoother
@@ -8,7 +9,7 @@ import matplotlib.pyplot as plt
 from utils import vis
 from op_pso import PSO
 import open3d
-import test_opencv as showhand
+import add_effects as showhand
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 _mano_root = 'mano/models'
@@ -73,6 +74,13 @@ pre_uv = None
 shape_time = 0
 opt_shape = None
 shape_flag = True
+switch = 0  # 状态变量
+count = 0  # 计时
+transfer = 0  # 中间冷却状态
+flag_ul = 0  # 方块点击变量
+flag_ur = 0
+flag_ll = 0
+flag_lr = 0
 while (cap.isOpened()):
     ret_flag, img = cap.read()
     input = np.flip(img.copy(), -1)
@@ -99,10 +107,63 @@ while (cap.isOpened()):
 
     # 在原图中标注21关键点
     original_uv = all_uv * 15
+    original_uv = original_uv[0].cpu().numpy()
+    original_uv = np.flip(original_uv, -1)
     img_copy = img.copy()
     img_copy = showhand.paint_hand(original_uv, img_copy)
-    cv2.imshow("Capture_Test", img_copy)
 
+    # # 识别五指张开手势，开关拖尾特效
+    # if transfer == 0:
+    #     # 不在状态转换冷却中
+    #     flag_judge = showhand.judge_posture(original_uv)
+    #     if flag_judge == 1:
+    #         switch = 1 - switch
+    #         if switch == 1:
+    #             print("开启特效")
+    #         elif switch == 0:
+    #             print("关闭特效")
+    #         transfer = 1
+    #         count = 0
+    #         print("识别成功，进入识别冷却")
+    # else:
+    #     # 在状态转换冷却中
+    #     if count < 30:  # count阈值30对应约3s
+    #         count += 1
+    #     else:
+    #         transfer = 0
+    #         print("冷却完毕，可以再次识别")
+
+    # 显示拖尾特效
+    # if switch == 0:
+    #     # 处于未激活状态
+    #     # print("没开特效\n")
+    #     pass
+    # elif switch == 1:
+    #     # 处于激活状态
+    #     img_copy = showhand.show_special_effects(original_uv, img_copy)
+    #     # print("特效开了")
+    #     # 显示特效
+
+    #  识别五指张开手势，开启互动特效
+    if switch == 0:
+        # 不在状态转换冷却中
+        flag_judge = showhand.judge_posture(original_uv)
+        if flag_judge == 1:
+            switch = 1
+            transfer = 1
+            count = 0
+            flag_ul = 0  # 方块点击变量清零
+            flag_ur = 0
+            flag_ll = 0
+            flag_lr = 0
+            print("开启互动")
+    # 开启点击互动
+    elif switch == 1:
+        img_copy, flag_ul, flag_ur, flag_ll, flag_lr = showhand.click_box(original_uv, img_copy, flag_ul, flag_ur, flag_ll, flag_lr)
+        if flag_ul and flag_ur and flag_ll and flag_lr:
+            switch = 0
+            print("全部点亮！")
+    cv2.imshow("Capture_Test", img_copy)
 
     trans = np.zeros((1, 3))
     trans[0, 0:2] = now_uv - 16.0
